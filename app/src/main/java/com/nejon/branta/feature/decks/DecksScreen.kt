@@ -43,29 +43,45 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.nejon.branta.data.model.Deck
 
+// ---------------------------------------------------------------------------
+// 1. ROUTE (Stateful Entry Point)
+//    - Connects to ViewModel and collects reactive UI state.
+//    - Keeps the child DecksScreen 100% stateless and easy to preview/test.
+// ---------------------------------------------------------------------------
 @Composable
 fun DecksScreenRoute(
     onDeckClick: (String) -> Unit,
     viewModel: DecksViewModel = viewModel()
 ) {
+    // collectAsStateWithLifecycle() pauses stream collection when app goes to background
+    // The Kotlin 'by' delegate extracts raw DecksUiState object directly out of State
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
+    // Pass data values down and event callbacks up to the ViewModel
     DecksScreen(
         uiState = uiState,
-        onCreateDeck = { name, description -> viewModel.createDeck(name, description) },
+        onCreateDeck = { name, desc -> viewModel.createDeck(name, desc) },
         onDeleteDeck = { deckId -> viewModel.deleteDeck(deckId) },
         onDeckClick = onDeckClick
     )
 }
 
+// ---------------------------------------------------------------------------
+// 2. MAIN SCREEN UI (Stateless)
+//    - Receives pure data (uiState) and callbacks.
+//    - Uses Material 3 Scaffold to structure topBar, content, and FAB.
+// ---------------------------------------------------------------------------
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DecksScreen(
     uiState: DecksUiState,
-    onCreateDeck: (String, String) -> Unit,
-    onDeleteDeck: (String) -> Unit,
-    onDeckClick: (String) -> Unit
+    onCreateDeck: (String, String) -> Unit = { _, _ -> },
+    onDeleteDeck: (String) -> Unit = {},
+    onDeckClick: (String) -> Unit = {}
 ) {
+    // remember: Preserves variable across UI recompositions (re-renders)
+    // mutableStateOf: Creates reactive Compose state
+    // by: Kotlin delegate allowing direct boolean assignment (showCreateDialog = true)
     var showCreateDialog by remember { mutableStateOf(false) }
 
     Scaffold(
@@ -75,21 +91,31 @@ fun DecksScreen(
             )
         },
         floatingActionButton = {
+            // Floating Action Button (+) anchored in bottom-right corner
             FloatingActionButton(onClick = { showCreateDialog = true }) {
-                Icon(imageVector = Icons.Default.Add, contentDescription = "Create Deck")
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = "Create Deck"
+                )
             }
         }
     ) { innerPadding ->
+        // Box overlays content and uses innerPadding so topBar doesn't obscure list
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
+            // Kotlin 'when' expression evaluates conditional UI rendering
             when {
+                // State 1: Show loading spinner dead-center
                 uiState.isLoading -> {
-                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                    CircularProgressIndicator(
+                        modifier = Modifier.align(Alignment.Center)
+                    )
                 }
 
+                // State 2: Show empty text message dead-center if no decks exist
                 uiState.decks.isEmpty() -> {
                     Text(
                         text = "No decks yet. Tap + to create one!",
@@ -98,12 +124,14 @@ fun DecksScreen(
                     )
                 }
 
+                // State 3: Render virtualized scrolling list of decks
                 else -> {
                     LazyColumn(
-                        contentPadding = PaddingValues(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        contentPadding = PaddingValues(16.dp), // Padding around outer list
+                        verticalArrangement = Arrangement.spacedBy(12.dp), // 12dp gap between cards
                         modifier = Modifier.fillMaxSize()
                     ) {
+                        // key = { it.id } helps Compose track list items when deleted or reordered
                         items(items = uiState.decks, key = { it.id }) { deck ->
                             DeckItem(
                                 deck = deck,
@@ -117,17 +145,22 @@ fun DecksScreen(
         }
     }
 
+    // Popup modal dialog rendered when showCreateDialog is true
     if (showCreateDialog) {
         CreateDeckDialog(
             onDismiss = { showCreateDialog = false },
-            onConfirm = { name, description ->
-                onCreateDeck(name, description)
-                showCreateDialog = false
+            onConfirm = { name, desc ->
+                onCreateDeck(name, desc)
+                showCreateDialog = false // Close dialog after creating deck
             }
         )
     }
 }
 
+// ---------------------------------------------------------------------------
+// 3. HELPER COMPONENTS
+//    - Individual Deck Card item displaying title, optional description, & delete icon.
+// ---------------------------------------------------------------------------
 @Composable
 private fun DeckItem(
     deck: Deck,
@@ -137,8 +170,8 @@ private fun DeckItem(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            .clickable(onClick = onClick), // Makes entire card tapable with ripple
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp) // Shadow depth
     ) {
         Row(
             modifier = Modifier
@@ -147,11 +180,13 @@ private fun DeckItem(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
+            // weight(1f) expands Column to take all remaining width, pushing Delete icon to right
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = deck.name,
                     style = MaterialTheme.typography.titleMedium
                 )
+                // Optional description rendered ONCE only if text is not blank
                 if (deck.description.isNotBlank()) {
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
@@ -161,6 +196,7 @@ private fun DeckItem(
                     )
                 }
             }
+            // Trash Icon Button
             IconButton(onClick = onDelete) {
                 Icon(
                     imageVector = Icons.Default.Delete,
@@ -171,27 +207,34 @@ private fun DeckItem(
     }
 }
 
+// ---------------------------------------------------------------------------
+// 4. DIALOGS
+//    - Modal form with text fields for creating a new deck.
+// ---------------------------------------------------------------------------
 @Composable
 private fun CreateDeckDialog(
     onDismiss: () -> Unit,
     onConfirm: (String, String) -> Unit
 ) {
+    // Local form state for text fields
     var name by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = onDismiss, // Fired when user taps outside dialog or back button
         title = { Text("Create New Deck") },
         text = {
             Column {
+                // Deck Name Text Input
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("Deck Name") },
+                    label = { Text("Name") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(modifier = Modifier.height(8.dp))
+                // Description Text Input (Optional)
                 OutlinedTextField(
                     value = description,
                     onValueChange = { description = it },
@@ -203,7 +246,7 @@ private fun CreateDeckDialog(
         confirmButton = {
             TextButton(
                 onClick = { onConfirm(name, description) },
-                enabled = name.isNotBlank()
+                enabled = name.isNotBlank() // Disabled until user types a name
             ) {
                 Text("Create")
             }
@@ -216,6 +259,10 @@ private fun CreateDeckDialog(
     )
 }
 
+// ---------------------------------------------------------------------------
+// 5. PREVIEW
+//    - Visual preview in Android Studio's design tab with mock data.
+// ---------------------------------------------------------------------------
 @Preview(showBackground = true)
 @Composable
 private fun DecksScreenPreview() {
@@ -223,13 +270,13 @@ private fun DecksScreenPreview() {
         DecksScreen(
             uiState = DecksUiState(
                 decks = listOf(
-                    Deck(id = "1", name = "Kotlin Basics", description = "Core language concepts"),
-                    Deck(id = "2", name = "Jetpack Compose", description = "Declarative UI toolkit")
+                    Deck(
+                        id = "1",
+                        name = "Kotlin Basics",
+                        description = "Core concepts of Kotlin language"
+                    )
                 )
-            ),
-            onCreateDeck = { _, _ -> },
-            onDeleteDeck = {},
-            onDeckClick = {}
+            )
         )
     }
 }
