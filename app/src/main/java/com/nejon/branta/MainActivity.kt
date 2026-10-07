@@ -12,12 +12,14 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.nejon.branta.feature.cards.CardsScreenRoute
 import com.nejon.branta.feature.decks.DecksScreenRoute
+import com.nejon.branta.feature.review.ReviewScreenRoute
 import com.nejon.branta.ui.theme.BrantaTheme
 
 // ---------------------------------------------------------------------------
 // MAIN ACTIVITY
 // - The single Activity entry point of Branta.
 // - Uses official Jetpack Navigation Compose (NavHost & NavController) for routing.
+// - Handles "decks", "cards/{deckId}", and "review/{deckId}" routes.
 // ---------------------------------------------------------------------------
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -38,8 +40,12 @@ class MainActivity : ComponentActivity() {
                         composable("decks") {
                             DecksScreenRoute(
                                 onDeckClick = { deckId ->
-                                    // Push cards route with dynamic deckId path parameter
+                                    // Tapping deck card body opens Cards List screen
                                     navController.navigate("cards/$deckId")
+                                },
+                                onStudyClick = { deckId ->
+                                    // Tapping "Study" button opens Spaced Repetition Review Session
+                                    navController.navigate("review/$deckId")
                                 }
                             )
                         }
@@ -50,6 +56,20 @@ class MainActivity : ComponentActivity() {
                             val deckId = backStackEntry.arguments?.getString("deckId") ?: ""
 
                             CardsScreenRoute(
+                                deckId = deckId,
+                                onBackClick = {
+                                    // Pop screen off backstack to return to Decks Screen
+                                    navController.popBackStack()
+                                }
+                            )
+                        }
+
+                        // Destination 3: Review Session Screen ("review/{deckId}")
+                        composable("review/{deckId}") { backStackEntry ->
+                            // Extract deckId path parameter from route arguments
+                            val deckId = backStackEntry.arguments?.getString("deckId") ?: ""
+
+                            ReviewScreenRoute(
                                 deckId = deckId,
                                 onBackClick = {
                                     // Pop screen off backstack to return to Decks Screen

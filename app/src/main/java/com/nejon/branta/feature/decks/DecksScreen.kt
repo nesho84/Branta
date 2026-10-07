@@ -51,6 +51,7 @@ import com.nejon.branta.data.model.Deck
 @Composable
 fun DecksScreenRoute(
     onDeckClick: (String) -> Unit,
+    onStudyClick: (String) -> Unit,
     viewModel: DecksViewModel = viewModel()
 ) {
     // collectAsStateWithLifecycle() pauses stream collection when app goes to background
@@ -62,7 +63,8 @@ fun DecksScreenRoute(
         uiState = uiState,
         onCreateDeck = { name, desc -> viewModel.createDeck(name, desc) },
         onDeleteDeck = { deckId -> viewModel.deleteDeck(deckId) },
-        onDeckClick = onDeckClick
+        onDeckClick = onDeckClick,
+        onStudyClick = onStudyClick
     )
 }
 
@@ -77,7 +79,8 @@ fun DecksScreen(
     uiState: DecksUiState,
     onCreateDeck: (String, String) -> Unit = { _, _ -> },
     onDeleteDeck: (String) -> Unit = {},
-    onDeckClick: (String) -> Unit = {}
+    onDeckClick: (String) -> Unit = {},
+    onStudyClick: (String) -> Unit = {}
 ) {
     // remember: Preserves variable across UI recompositions (re-renders)
     // mutableStateOf: Creates reactive Compose state
@@ -136,6 +139,7 @@ fun DecksScreen(
                             DeckItem(
                                 deck = deck,
                                 onClick = { onDeckClick(deck.id) },
+                                onStudy = { onStudyClick(deck.id) },
                                 onDelete = { onDeleteDeck(deck.id) }
                             )
                         }
@@ -159,12 +163,13 @@ fun DecksScreen(
 
 // ---------------------------------------------------------------------------
 // 3. HELPER COMPONENTS
-//    - Individual Deck Card item displaying title, optional description, & delete icon.
+//    - Individual Deck Card item displaying title, optional description, Study button, & delete icon.
 // ---------------------------------------------------------------------------
 @Composable
 private fun DeckItem(
     deck: Deck,
     onClick: () -> Unit,
+    onStudy: () -> Unit,
     onDelete: () -> Unit
 ) {
     Card(
@@ -180,7 +185,7 @@ private fun DeckItem(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // weight(1f) expands Column to take all remaining width, pushing Delete icon to right
+            // weight(1f) expands Column to take all remaining width, pushing buttons to right
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = deck.name,
@@ -195,6 +200,10 @@ private fun DeckItem(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+            }
+            // "Study" button opens Spaced Repetition Review Mode
+            TextButton(onClick = onStudy) {
+                Text("Study")
             }
             // Trash Icon Button
             IconButton(onClick = onDelete) {
