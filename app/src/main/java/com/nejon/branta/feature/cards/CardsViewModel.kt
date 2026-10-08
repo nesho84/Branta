@@ -5,8 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.nejon.branta.data.model.Card
 import com.nejon.branta.data.repository.CardRepository
 import com.nejon.branta.data.repository.DeckRepository
-import com.nejon.branta.data.repository.InMemoryCardRepository
-import com.nejon.branta.data.repository.InMemoryDeckRepository
+import com.nejon.branta.di.AppContainer
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -15,17 +14,16 @@ import kotlinx.coroutines.launch
 
 // ---------------------------------------------------------------------------
 // CARDS VIEW MODEL
-// - Manages UI state for viewing, adding, and deleting flashcards in a deck.
-// - Receives deckId to load cards for that specific deck.
+// - Manages UI state for viewing, adding, editing, and deleting flashcards in a deck.
 // ---------------------------------------------------------------------------
 class CardsViewModel(
     private val deckId: String,
-    private val cardRepository: CardRepository = InMemoryCardRepository(),
-    private val deckRepository: DeckRepository = InMemoryDeckRepository()
+    private val cardRepository: CardRepository = AppContainer.cardRepository,
+    private val deckRepository: DeckRepository = AppContainer.deckRepository
 ) : ViewModel() {
 
     // Combine deck details flow and cards list flow into a hot StateFlow<CardsUiState>
-    var uiState: StateFlow<CardsUiState> = combine(
+    val uiState: StateFlow<CardsUiState> = combine(
         deckRepository.getDeckById(deckId),
         cardRepository.getCardsForDeck(deckId)
     ) { deck, cards ->
@@ -41,13 +39,27 @@ class CardsViewModel(
     )
 
     // Inserts a new flashcard into the current deck
-    fun createCard(font: String, back: String?) {
-        if (font.isBlank()) return
+    fun createCard(front: String, back: String?) {
+        if (front.isBlank()) return
         viewModelScope.launch {
             cardRepository.insertCard(
                 Card(
                     deckId = deckId,
-                    front = font.trim(),
+                    front = front.trim(),
+                    back = back?.trim()?.ifBlank { null }
+                )
+            )
+        }
+    }
+
+    // Updates an existing flashcard's front and back text
+    fun updateCard(cardId: String, front: String, back: String?) {
+        if (front.isBlank()) return
+        val currentCard = uiState.value.cards.find { it.id == cardId } ?: return
+        viewModelScope.launch {
+            cardRepository.updateCard(
+                currentCard.copy(
+                    front = front.trim(),
                     back = back?.trim()?.ifBlank { null }
                 )
             )
@@ -60,5 +72,4 @@ class CardsViewModel(
             cardRepository.deleteCard(cardId)
         }
     }
-
 }

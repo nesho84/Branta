@@ -6,21 +6,21 @@ import com.nejon.branta.data.model.Deck
 // ---------------------------------------------------------------------------
 // REVIEW UI STATE
 // - Immutable state container for the Review Session screen.
-// - Tracks cards queue, current top card index, reveal status, & completion.
+// - Tracks active queue of cards remaining in session & session progress.
 // ---------------------------------------------------------------------------
 data class ReviewUiState(
-    val deck: Deck? = null,                      // Deck details
-    val cardsToReview: List<Card> = emptyList(), // Queue of cards to review
-    val currentCardIndex: Int = 0,               // Index of currently visible top card
-    val isBackRevealed: Boolean = false,         // True if back answer is revealed
-    val reviewedCount: Int = 0,                  // Total cards reviewed in this session
-    val isLoading: Boolean = false               // True while loading initial data
+    val deck: Deck? = null,                       // Deck details
+    val activeCards: List<Card> = emptyList(),    // Active queue of remaining cards in session
+    val totalCardsInSession: Int = 0,             // Total cards initially in session
+    val reviewedCount: Int = 0,                   // Total cards reviewed so far
+    val isBackRevealed: Boolean = false,          // True if back answer is revealed
+    val isLoading: Boolean = false                // True while loading initial data
 ) {
-    // Computed property: Returns currently active card at top of stack (null if empty/done)
+    // Current top card at front of active queue (null if empty or completed)
     val currentCard: Card?
-        get() = cardsToReview.getOrNull(currentCardIndex)
+        get() = activeCards.firstOrNull()
 
-    // Computed property: Returns true when all cards in session have been answered
+    // Session is completed when loading is false, initial queue was not empty, but activeCards is now empty
     val isSessionCompleted: Boolean
-        get() = !isLoading && cardsToReview.isNotEmpty() && currentCardIndex >= cardsToReview.size
+        get() = !isLoading && totalCardsInSession > 0 && activeCards.isEmpty()
 }

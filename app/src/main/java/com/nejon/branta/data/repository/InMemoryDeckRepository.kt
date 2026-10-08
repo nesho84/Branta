@@ -9,50 +9,64 @@ import kotlinx.coroutines.flow.update
 
 // ---------------------------------------------------------------------------
 // IN-MEMORY DECK REPOSITORY
-// - Temporary reactive in-memory implementation of DeckRepository.
-// - Seeded with initial sample decks for immediate testing without Room DB.
+// - Temporary reactive in-memory storage seeded with 6 rich learning decks.
 // ---------------------------------------------------------------------------
 class InMemoryDeckRepository : DeckRepository {
 
-    // MutableStateFlow holds reactive list of decks in memory
+    // MutableStateFlow holds reactive list of 6 learning decks in memory
     private val _decks = MutableStateFlow(
         listOf(
             Deck(
                 id = "1",
-                name = "Kotlin Basics",
-                description = "Core concepts of Kotlin language"
+                name = "Kotlin Fundamentals",
+                description = "Core language concepts, null safety, and data types"
             ),
             Deck(
                 id = "2",
-                name = "Android Jetpack Compose",
-                description = "Declarative UI toolkit"
+                name = "Jetpack Compose UI",
+                description = "Declarative UI toolkit, state, and modifiers"
+            ),
+            Deck(
+                id = "3",
+                name = "Coroutines & Flow",
+                description = "Asynchronous programming and reactive streams"
+            ),
+            Deck(
+                id = "4",
+                name = "Android Architecture",
+                description = "Google's Clean Architecture guide and ViewModels"
+            ),
+            Deck(
+                id = "5",
+                name = "Android Jetpack Libraries",
+                description = "Room, Navigation Compose, and WorkManager"
+            ),
+            Deck(
+                id = "6",
+                name = "Material Design 3",
+                description = "Dynamic colors, typography, and accessibility guidelines"
             )
         )
     )
 
-    // Returns read-only StateFlow as Flow
     override fun getDecks(): Flow<List<Deck>> {
         return _decks.asStateFlow()
     }
 
-    // Maps decks stream to emit single deck matching ID
     override fun getDeckById(id: String): Flow<Deck?> {
         return _decks.map { decks -> decks.find { it.id == id } }
     }
 
-    // Atomically appends new deck
     override suspend fun insertDeck(deck: Deck) {
         _decks.update { current -> current + deck }
     }
 
-    // Replaces matching deck instance
     override suspend fun updateDeck(deck: Deck) {
         _decks.update { current ->
             current.map { if (it.id == deck.id) deck else it }
         }
     }
 
-    // Removes deck matching ID
     override suspend fun deleteDeck(id: String) {
         _decks.update { current -> current.filterNot { it.id == id } }
     }

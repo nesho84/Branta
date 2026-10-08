@@ -3,40 +3,51 @@ package com.nejon.branta.feature.decks
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.nejon.branta.data.model.Deck
+import com.nejon.branta.data.repository.CardRepository
 import com.nejon.branta.data.repository.DeckRepository
-import com.nejon.branta.data.repository.InMemoryDeckRepository
+import com.nejon.branta.di.AppContainer
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 // ---------------------------------------------------------------------------
 // DECKS VIEW MODEL
 // - Manages UI state and business events for DecksScreen.
-// - Survives Android configuration changes (like screen rotation).
-// - Exposes a reactive StateFlow<DecksUiState> observed by Compose UI.
+// - Combines deck list flow and card list flow to calculate live card counts per deck.
 // ---------------------------------------------------------------------------
 class DecksViewModel(
-    // Default constructor parameter instantiates InMemoryDeckRepository (no 'new' keyword in Kotlin)
-    private val deckRepository: DeckRepository = InMemoryDeckRepository()
+    private val deckRepository: DeckRepository = AppContainer.deckRepository,
+    private val cardRepository: CardRepository = AppContainer.cardRepository
 ) : ViewModel() {
 
-    // Transforms repository Flow<List<Deck>> into a hot StateFlow<DecksUiState>
-    val uiState: StateFlow<DecksUiState> = deckRepository.getDecks()
-        // Convert raw List<Deck> into a DecksUiState container
-        .map { decks -> DecksUiState(decks = decks, isLoading = false) }
-        // stateIn turns cold Flow into hot StateFlow cached in viewModelScope
-        .stateIn(
-            scope = viewModelScope, // Scope tied to ViewModel lifecycle (auto-canceled on destroy)
-            started = SharingStarted.WhileSubscribed(5_000), // Grace period keeps flow alive during screen rotation
-            initialValue = DecksUiState(isLoading = true) // Initial emission before repository responds
+    // Combine deck list flow and card list flow to compute live card counts per deck
+    val uiState: StateFlow<DecksUiState> = combine(
+        deckRepository.getDecks(),
+        cardRepository.getAllCards()
+    ) { decks, cards ->
+        // Group cards by deck once, then derive total + mastered counts per deck
+        val progress = cards.groupBy { it.deckId }.mapValues { (_, deckCards) ->
+            DeckProgress(
+                totalCards = deckCards.size,
+                masteredCards = deckCards.count { it.repetition > 0 }
+            )
+        }
+        DecksUiState(
+            decks = decks,
+            deckProgress = progress,
+            isLoading = false
         )
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = DecksUiState(isLoading = true)
+    )
 
     // Inserts a new deck into the repository inside a coroutine
     fun createDeck(name: String, description: String = "") {
         if (name.isBlank()) return
-        // viewModelScope.launch starts a background coroutine bound to ViewModel lifecycle
         viewModelScope.launch {
             deckRepository.insertDeck(
                 Deck(
@@ -47,11 +58,25 @@ class DecksViewModel(
         }
     }
 
-    // Removes a deck from the repository by ID
+    // Updates an existing deck's name and description
+    fun updateDeck(deckId: String, name: String, description: String = "") {
+        if (name.isBlank()) return
+        viewModelScope.launch {
+            deckRepository.updateDeck(
+                Deck(
+                    id = deckId,
+                    name = name.trim(),
+                    description = description.trim()
+                )
+            )
+        }
+    }
+
+    // Removes a deck from the repository by ID and purges its cards
     fun deleteDeck(deckId: String) {
-        // Launches background coroutine to call suspend repository function
         viewModelScope.launch {
             deckRepository.deleteDeck(deckId)
+            cardRepository.deleteCardsForDeck(deckId)
         }
     }
 }

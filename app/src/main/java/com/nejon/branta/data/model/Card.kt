@@ -17,7 +17,6 @@ data class Card(
     val interval: Int = 0,                         // Days until next review (SM-2)
     val repetition: Int = 0,                       // Consecutive successful review count (SM-2)
     val easeFactor: Float = 2.5f,                  // Difficulty multiplier, starting at 2.5 (SM-2)
-    val dueDate: Instant = Instant.now(),          // Instant when card is due for review
     val lastReviewedAt: Instant? = null,           // Instant of last review session
     val createdAt: Instant = Instant.now(),        // Creation timestamp
     val updatedAt: Instant = Instant.now()         // Last update timestamp

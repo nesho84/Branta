@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.Flow
 // - Abstract interface defining flashcard CRUD operations and reactive queries.
 // ---------------------------------------------------------------------------
 interface CardRepository {
+    fun getAllCards(): Flow<List<Card>>                  // Stream of all cards across all decks
     fun getCardsForDeck(deckId: String): Flow<List<Card>> // Stream of cards for a deck
     fun getCardById(id: String): Flow<Card?>              // Stream emitting matching card or null
     suspend fun insertCard(card: Card)                    // Async insert card
