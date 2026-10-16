@@ -1,6 +1,7 @@
 package com.nejon.branta.data.repository
 
 import com.nejon.branta.data.model.Deck
+import com.nejon.branta.data.model.DeckType
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -9,11 +10,11 @@ import kotlinx.coroutines.flow.update
 
 // ---------------------------------------------------------------------------
 // IN-MEMORY DECK REPOSITORY
-// - Temporary reactive in-memory storage seeded with 6 rich learning decks.
+// - Temporary reactive in-memory storage seeded with 7 learning decks (6 Q&A, 1 Note).
 // ---------------------------------------------------------------------------
 class InMemoryDeckRepository : DeckRepository {
 
-    // MutableStateFlow holds reactive list of 6 learning decks in memory
+    // MutableStateFlow holds reactive list of 7 learning decks in memory
     private val _decks = MutableStateFlow(
         listOf(
             Deck(
@@ -45,6 +46,12 @@ class InMemoryDeckRepository : DeckRepository {
                 id = "6",
                 name = "Material Design 3",
                 description = "Dynamic colors, typography, and accessibility guidelines"
+            ),
+            Deck(
+                id = "7",
+                name = "Quick Kotlin Notes",
+                description = "Short facts to read and remember",
+                type = DeckType.NOTE
             )
         )
     )

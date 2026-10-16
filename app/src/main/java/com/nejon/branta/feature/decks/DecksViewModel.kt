@@ -3,6 +3,7 @@ package com.nejon.branta.feature.decks
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.nejon.branta.data.model.Deck
+import com.nejon.branta.data.model.DeckType
 import com.nejon.branta.data.repository.CardRepository
 import com.nejon.branta.data.repository.DeckRepository
 import com.nejon.branta.di.AppContainer
@@ -11,27 +12,28 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.time.Instant
 
 // ---------------------------------------------------------------------------
 // DECKS VIEW MODEL
 // - Manages UI state and business events for DecksScreen.
-// - Combines deck list flow and card list flow to calculate live card counts per deck.
+// - Combines deck list flow and card list flow to calculate live learning progress per deck.
 // ---------------------------------------------------------------------------
 class DecksViewModel(
     private val deckRepository: DeckRepository = AppContainer.deckRepository,
     private val cardRepository: CardRepository = AppContainer.cardRepository
 ) : ViewModel() {
 
-    // Combine deck list flow and card list flow to compute live card counts per deck
+    // Combine deck list flow and card list flow to compute live learning progress per deck
     val uiState: StateFlow<DecksUiState> = combine(
         deckRepository.getDecks(),
         cardRepository.getAllCards()
     ) { decks, cards ->
-        // Group cards by deck once, then derive total + mastered counts per deck
+        // Group cards by deck once, then derive total + learned counts per deck
         val progress = cards.groupBy { it.deckId }.mapValues { (_, deckCards) ->
             DeckProgress(
                 totalCards = deckCards.size,
-                masteredCards = deckCards.count { it.repetition > 0 }
+                learnedCards = deckCards.count { it.isLearned }
             )
         }
         DecksUiState(
@@ -45,28 +47,30 @@ class DecksViewModel(
         initialValue = DecksUiState(isLoading = true)
     )
 
-    // Inserts a new deck into the repository inside a coroutine
-    fun createDeck(name: String, description: String = "") {
+    // Inserts a new deck with the chosen type
+    fun createDeck(name: String, description: String, type: DeckType) {
         if (name.isBlank()) return
         viewModelScope.launch {
             deckRepository.insertDeck(
                 Deck(
                     name = name.trim(),
-                    description = description.trim()
+                    description = description.trim(),
+                    type = type
                 )
             )
         }
     }
 
-    // Updates an existing deck's name and description
-    fun updateDeck(deckId: String, name: String, description: String = "") {
+    // Updates a deck's name and description (its type and creation date are kept)
+    fun updateDeck(deckId: String, name: String, description: String) {
         if (name.isBlank()) return
+        val currentDeck = uiState.value.decks.find { it.id == deckId } ?: return
         viewModelScope.launch {
             deckRepository.updateDeck(
-                Deck(
-                    id = deckId,
+                currentDeck.copy(
                     name = name.trim(),
-                    description = description.trim()
+                    description = description.trim(),
+                    updatedAt = Instant.now()
                 )
             )
         }

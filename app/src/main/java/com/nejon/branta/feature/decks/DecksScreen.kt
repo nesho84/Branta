@@ -30,6 +30,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -46,6 +49,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.nejon.branta.data.model.Deck
+import com.nejon.branta.data.model.DeckType
 import androidx.compose.material3.LinearProgressIndicator
 
 // ---------------------------------------------------------------------------
@@ -66,7 +70,7 @@ fun DecksScreenRoute(
     // Pass data values down and event callbacks up to the ViewModel
     DecksScreen(
         uiState = uiState,
-        onCreateDeck = { name, desc -> viewModel.createDeck(name, desc) },
+        onCreateDeck = { name, desc, type -> viewModel.createDeck(name, desc, type) },
         onUpdateDeck = { deckId, name, desc -> viewModel.updateDeck(deckId, name, desc) },
         onDeleteDeck = { deckId -> viewModel.deleteDeck(deckId) },
         onDeckClick = onDeckClick,
@@ -83,7 +87,7 @@ fun DecksScreenRoute(
 @Composable
 fun DecksScreen(
     uiState: DecksUiState,
-    onCreateDeck: (String, String) -> Unit = { _, _ -> },
+    onCreateDeck: (String, String, DeckType) -> Unit = { _, _, _ -> },
     onUpdateDeck: (String, String, String) -> Unit = { _, _, _ -> },
     onDeleteDeck: (String) -> Unit = {},
     onDeckClick: (String) -> Unit = {},
@@ -164,8 +168,8 @@ fun DecksScreen(
     if (showCreateDialog) {
         CreateDeckDialog(
             onDismiss = { showCreateDialog = false },
-            onConfirm = { name, desc ->
-                onCreateDeck(name, desc)
+            onConfirm = { name, desc, type ->
+                onCreateDeck(name, desc, type)
                 showCreateDialog = false
             }
         )
@@ -266,6 +270,18 @@ private fun DeckItem(
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                         )
                     }
+                    // Deck Type Badge (e.g. "❓ Q&A")
+                    Surface(
+                        shape = MaterialTheme.shapes.small,
+                        color = MaterialTheme.colorScheme.tertiaryContainer
+                    ) {
+                        Text(
+                            text = deck.type.label,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
                 }
 
                 // Edit Pencil + Delete Trash Icons on Top Right
@@ -304,7 +320,7 @@ private fun DeckItem(
                 )
             }
 
-            // Mastery progress (hidden for empty decks — a 0% bar there is just noise)
+            // Learning progress (hidden for empty decks — a 0% bar there is just noise)
             if (progress.totalCards > 0) {
                 Spacer(modifier = Modifier.height(12.dp))
                 LinearProgressIndicator(
@@ -319,7 +335,7 @@ private fun DeckItem(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
-                        text = "${progress.masteredCards} of ${progress.totalCards} mastered",
+                        text = "${progress.learnedCards} of ${progress.totalCards} learned",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -354,16 +370,31 @@ private fun DeckItem(
 @Composable
 private fun CreateDeckDialog(
     onDismiss: () -> Unit,
-    onConfirm: (String, String) -> Unit
+    onConfirm: (String, String, DeckType) -> Unit
 ) {
     var name by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
+    var type by remember { mutableStateOf(DeckType.QUESTION_ANSWER) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Create New Deck") },
         text = {
             Column {
+                // Type picker: chosen once, can't be changed later (planned TODO types are hidden)
+                val availableTypes = DeckType.entries.filter { it.isAvailable }
+                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                    availableTypes.forEachIndexed { index, option ->
+                        SegmentedButton(
+                            selected = type == option,
+                            onClick = { type = option },
+                            shape = SegmentedButtonDefaults.itemShape(index = index, count = availableTypes.size)
+                        ) {
+                            Text(option.label)
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(12.dp))
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
@@ -382,7 +413,7 @@ private fun CreateDeckDialog(
         },
         confirmButton = {
             TextButton(
-                onClick = { onConfirm(name, description) },
+                onClick = { onConfirm(name, description, type) },
                 enabled = name.isNotBlank()
             ) {
                 Text("Create")
@@ -411,6 +442,13 @@ private fun EditDeckDialog(
         title = { Text("Edit Deck") },
         text = {
             Column {
+                // The type is shown but locked (changing it would affect every card)
+                Text(
+                    text = "Type: ${deck.type.label} (can't be changed)",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(8.dp))
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
@@ -459,7 +497,7 @@ private fun DecksScreenPreview() {
                         description = "Core concepts of Kotlin language"
                     )
                 ),
-                deckProgress = mapOf("1" to DeckProgress(totalCards = 5, masteredCards = 3))
+                deckProgress = mapOf("1" to DeckProgress(totalCards = 5, learnedCards = 3))
             )
         )
     }

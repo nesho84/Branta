@@ -28,7 +28,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -45,6 +44,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.nejon.branta.data.model.Card
 import com.nejon.branta.data.model.Deck
+import com.nejon.branta.data.model.DeckType
 
 // ---------------------------------------------------------------------------
 // 1. ROUTE (Stateful Entry Point)
@@ -63,8 +63,8 @@ fun CardsScreenRoute(
     // Pass state and callbacks down to stateless CardsScreen
     CardsScreen(
         uiState = uiState,
-        onCreateCard = { front, back -> viewModel.createCard(front, back) },
-        onUpdateCard = { cardId, front, back -> viewModel.updateCard(cardId, front, back) },
+        onCreateCard = { text, answer -> viewModel.createCard(text, answer) },
+        onUpdateCard = { cardId, text, answer -> viewModel.updateCard(cardId, text, answer) },
         onDeleteCard = { cardId -> viewModel.deleteCard(cardId) },
         onBackClick = onBackClick
     )
@@ -79,10 +79,13 @@ fun CardsScreenRoute(
 fun CardsScreen(
     uiState: CardsUiState,
     onCreateCard: (String, String) -> Unit = { _, _ -> },
-    onUpdateCard: (String, String, String?) -> Unit = { _, _, _ -> },
+    onUpdateCard: (String, String, String) -> Unit = { _, _, _ -> },
     onDeleteCard: (String) -> Unit = {},
     onBackClick: () -> Unit = {}
 ) {
+    // Every card in this deck follows the deck's type
+    val deckType = uiState.deck?.type ?: DeckType.QUESTION_ANSWER
+
     // Local dialog state controls
     var showCreateDialog by remember { mutableStateOf(false) }
     var cardToEdit by remember { mutableStateOf<Card?>(null) }
@@ -145,6 +148,7 @@ fun CardsScreen(
                         items(items = uiState.cards, key = { it.id }) { card ->
                             CardItem(
                                 card = card,
+                                deckType = deckType,
                                 onEdit = { cardToEdit = card },
                                 onDelete = { cardToDelete = card }
                             )
@@ -155,24 +159,31 @@ fun CardsScreen(
         }
     }
 
-    // 1. Create Card Dialog
+    // 1. Create Card Dialog (empty form)
     if (showCreateDialog) {
-        CreateCardDialog(
+        CardDialog(
+            title = "New Card",
+            confirmLabel = "Create",
+            deckType = deckType,
             onDismiss = { showCreateDialog = false },
-            onConfirm = { front, back ->
-                onCreateCard(front, back)
+            onConfirm = { text, answer ->
+                onCreateCard(text, answer)
                 showCreateDialog = false
             }
         )
     }
 
-    // 2. Edit Card Dialog
+    // 2. Edit Card Dialog (same form, pre-filled with the card's values)
     cardToEdit?.let { card ->
-        EditCardDialog(
-            card = card,
+        CardDialog(
+            title = "Edit Card",
+            confirmLabel = "Save",
+            deckType = deckType,
+            initialText = card.text,
+            initialAnswer = card.answer ?: "",
             onDismiss = { cardToEdit = null },
-            onConfirm = { front, back ->
-                onUpdateCard(card.id, front, back)
+            onConfirm = { text, answer ->
+                onUpdateCard(card.id, text, answer)
                 cardToEdit = null
             }
         )
@@ -205,11 +216,12 @@ fun CardsScreen(
 
 // ---------------------------------------------------------------------------
 // 3. HELPER COMPONENTS
-//    - Individual Flashcard item displaying Card Type Badge, Front, Back, Edit & Delete icons.
+//    - Individual card item: text (and answer in Q&A decks), then a footer with progress counts + Edit & Delete.
 // ---------------------------------------------------------------------------
 @Composable
 private fun CardItem(
     card: Card,
+    deckType: DeckType,
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -222,74 +234,76 @@ private fun CardItem(
                 .padding(16.dp)
                 .fillMaxWidth()
         ) {
-            // Top Header: Card Type Pill Badge + Edit & Delete Action Buttons
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Card Type Pill Badge
-                Surface(
-                    shape = MaterialTheme.shapes.small,
-                    color = MaterialTheme.colorScheme.secondaryContainer
-                ) {
+            // Card content depends on the deck's type
+            when (deckType) {
+                DeckType.NOTE -> {
                     Text(
-                        text = card.cardType.name,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        text = card.text,
+                        style = MaterialTheme.typography.titleMedium
                     )
                 }
-                // Action Buttons: Edit Pencil + Delete Trash
-                Row {
-                    // Edit Pencil Icon
-                    IconButton(onClick = onEdit) {
-                        Icon(
-                            imageVector = Icons.Default.Edit,
-                            contentDescription = "Edit Card"
-                        )
-                    }
-                    // Delete Trash Icon
-                    IconButton(onClick = onDelete) {
-                        Icon(
-                            imageVector = Icons.Default.Delete,
-                            contentDescription = "Delete Card",
-                            tint = MaterialTheme.colorScheme.outline
-                        )
-                    }
+
+                DeckType.QUESTION_ANSWER -> {
+                    Text(
+                        text = "QUESTION",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = card.text,
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    HorizontalDivider()
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "ANSWER",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.secondary
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = card.answer.orEmpty(),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
+
+                // @TODO: content for the planned deck types (hidden from the picker for now)
+                DeckType.TRUE_FALSE,
+                DeckType.MULTIPLE_CHOICE,
+                DeckType.TYPE_ANSWER,
+                DeckType.PICTURE,
+                DeckType.LISTEN -> {}
             }
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // 1. Front Prompt / Question
-            Text(
-                text = "FRONT",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.primary
-            )
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = card.front,
-                style = MaterialTheme.typography.titleMedium
-            )
-
-            // 2. Optional Back Answer
-            if (!card.back.isNullOrBlank()) {
-                Spacer(modifier = Modifier.height(8.dp))
-                HorizontalDivider()
-                Spacer(modifier = Modifier.height(8.dp))
+            // Footer: learning progress on the left, Edit & Delete on the right
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Text(
-                    text = "BACK",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.secondary
+                    text = "✅ Got it ${card.gotItCount}×  ·  ⏭ Skipped ${card.skipCount}×",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f)
                 )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = card.back,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                IconButton(onClick = onEdit) {
+                    Icon(
+                        imageVector = Icons.Default.Edit,
+                        contentDescription = "Edit Card"
+                    )
+                }
+                IconButton(onClick = onDelete) {
+                    Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = "Delete Card",
+                        tint = MaterialTheme.colorScheme.outline
+                    )
+                }
             }
         }
     }
@@ -299,87 +313,66 @@ private fun CardItem(
 // 4. DIALOGS
 // ---------------------------------------------------------------------------
 
-// Create Card Dialog
+// Create / Edit Card Dialog: the fields follow the deck's type
 @Composable
-private fun CreateCardDialog(
+private fun CardDialog(
+    title: String,
+    confirmLabel: String,
+    deckType: DeckType,
     onDismiss: () -> Unit,
-    onConfirm: (String, String) -> Unit
+    onConfirm: (String, String) -> Unit,
+    initialText: String = "",
+    initialAnswer: String = ""
 ) {
-    var front by remember { mutableStateOf("") }
-    var back by remember { mutableStateOf("") }
+    var text by remember { mutableStateOf(initialText) }
+    var answer by remember { mutableStateOf(initialAnswer) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Create New Card") },
+        title = { Text(title) },
         text = {
             Column {
-                OutlinedTextField(
-                    value = front,
-                    onValueChange = { front = it },
-                    label = { Text("Front (Prompt / Question)") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = back,
-                    onValueChange = { back = it },
-                    label = { Text("Back (Answer / Explanation - Optional)") },
-                    modifier = Modifier.fillMaxWidth()
-                )
+                when (deckType) {
+                    DeckType.NOTE -> {
+                        OutlinedTextField(
+                            value = text,
+                            onValueChange = { text = it },
+                            label = { Text("Text to learn") },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+
+                    DeckType.QUESTION_ANSWER -> {
+                        OutlinedTextField(
+                            value = text,
+                            onValueChange = { text = it },
+                            label = { Text("Question") },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = answer,
+                            onValueChange = { answer = it },
+                            label = { Text("Answer") },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+
+                    // @TODO: fields for the planned deck types (hidden from the picker for now)
+                    DeckType.TRUE_FALSE,
+                    DeckType.MULTIPLE_CHOICE,
+                    DeckType.TYPE_ANSWER,
+                    DeckType.PICTURE,
+                    DeckType.LISTEN -> {}
+                }
             }
         },
         confirmButton = {
             TextButton(
-                onClick = { onConfirm(front, back) },
-                enabled = front.isNotBlank()
+                onClick = { onConfirm(text, answer) },
+                enabled = isCardInputValid(deckType, text, answer)
             ) {
-                Text("Create")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
-        }
-    )
-}
-
-// Edit Card Dialog
-@Composable
-private fun EditCardDialog(
-    card: Card,
-    onDismiss: () -> Unit,
-    onConfirm: (String, String) -> Unit
-) {
-    var front by remember { mutableStateOf(card.front) }
-    var back by remember { mutableStateOf(card.back ?: "") }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Edit Card") },
-        text = {
-            Column {
-                OutlinedTextField(
-                    value = front,
-                    onValueChange = { front = it },
-                    label = { Text("Front (Prompt / Question)") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = back,
-                    onValueChange = { back = it },
-                    label = { Text("Back (Answer / Explanation - Optional)") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = { onConfirm(front, back) },
-                enabled = front.isNotBlank()
-            ) {
-                Text("Save")
+                Text(confirmLabel)
             }
         },
         dismissButton = {
@@ -399,9 +392,10 @@ private fun CardsScreenPreview() {
     MaterialTheme {
         CardsScreen(
             uiState = CardsUiState(
-                deck = Deck(id = "1", name = "Kotlin Basics", description = "Core concepts"),
+                deck = Deck(id = "1", name = "Kotlin Basics", description = "Core concepts", type = DeckType.QUESTION_ANSWER),
                 cards = listOf(
-                    Card(id = "101", deckId = "1", front = "What is 'val'?", back = "Immutable variable")
+                    Card(id = "101", deckId = "1", text = "What is 'val'?", answer = "Immutable variable", gotItCount = 3, skipCount = 1),
+                    Card(id = "102", deckId = "1", text = "What is 'var'?", answer = "A variable you can change")
                 )
             )
         )

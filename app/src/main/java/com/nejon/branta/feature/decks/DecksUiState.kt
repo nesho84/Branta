@@ -5,13 +5,13 @@ import com.nejon.branta.data.model.Deck
 // Per-deck progress numbers shown on each deck card
 data class DeckProgress(
     val totalCards: Int = 0,    // Total cards in this deck
-    val masteredCards: Int = 0  // Cards with repetition > 0
+    val learnedCards: Int = 0   // Cards that are learned (Got it at least once)
 ) {
-    // Mastery as 0f...1f for LinearProgressIndicator
+    // Learned share as 0f...1f for LinearProgressIndicator
     val fraction: Float
-        get() = if (totalCards > 0) masteredCards.toFloat() / totalCards else 0f
+        get() = if (totalCards > 0) learnedCards.toFloat() / totalCards else 0f
 
-    // Mastery as a whole percentage for labels
+    // Learned share as a whole percentage for labels
     val percentage: Int
         get() = (fraction * 100).toInt()
 }
@@ -19,7 +19,7 @@ data class DeckProgress(
 // ---------------------------------------------------------------------------
 // DECKS UI STATE
 // - Immutable data class representing the complete UI state for DecksScreen.
-// - Includes cardCounts map (deckId -> count of cards in that deck).
+// - Includes deckProgress map (deckId -> total + learned cards).
 // ---------------------------------------------------------------------------
 data class DecksUiState(
     val decks: List<Deck> = emptyList(),                      // List of decks to display on screen

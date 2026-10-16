@@ -6,21 +6,21 @@ import com.nejon.branta.data.model.Deck
 // ---------------------------------------------------------------------------
 // REVIEW UI STATE
 // - Immutable state container for the Review Session screen.
-// - Tracks active queue of cards remaining in session & session progress.
+// - Each card in the deck is shown once, in order: "Card 3 of 10".
 // ---------------------------------------------------------------------------
 data class ReviewUiState(
-    val deck: Deck? = null,                       // Deck details
-    val activeCards: List<Card> = emptyList(),    // Active queue of remaining cards in session
-    val totalCardsInSession: Int = 0,             // Total cards initially in session
-    val reviewedCount: Int = 0,                   // Total cards reviewed so far
-    val isBackRevealed: Boolean = false,          // True if back answer is revealed
-    val isLoading: Boolean = false                // True while loading initial data
+    val deck: Deck? = null,                // Deck details
+    val cards: List<Card> = emptyList(),   // All cards in this session
+    val currentIndex: Int = 0,             // Position of the card being shown (0 = first)
+    val gotItInSession: Int = 0,           // How many times "Got it" was pressed this session
+    val isAnswerShown: Boolean = false,    // True after a Q&A card is tapped to show its answer
+    val isLoading: Boolean = false         // True while loading the deck's cards
 ) {
-    // Current top card at front of active queue (null if empty or completed)
+    // The card on screen right now (null once every card has been shown)
     val currentCard: Card?
-        get() = activeCards.firstOrNull()
+        get() = cards.getOrNull(currentIndex)
 
-    // Session is completed when loading is false, initial queue was not empty, but activeCards is now empty
-    val isSessionCompleted: Boolean
-        get() = !isLoading && totalCardsInSession > 0 && activeCards.isEmpty()
+    // Finished when the deck had cards and we've moved past the last one
+    val isFinished: Boolean
+        get() = !isLoading && cards.isNotEmpty() && currentIndex >= cards.size
 }

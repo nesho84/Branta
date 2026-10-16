@@ -1,36 +1,36 @@
 package com.nejon.branta.feature.stats
 
-// A card the learner keeps struggling with (low SM-2 ease factor)
-data class StrugglingCard(
-    val cardId: String,
-    val front: String,
-    val deckName: String,
-    val easeFactor: Float
-)
-
 // ---------------------------------------------------------------------------
 // STATS UI STATE
-// - Immutable state snapshot for the Learning Statistics Dashboard.
-// - Global, cross-deck insights only (per-deck progress lives on DecksScreen).
+// - Immutable state snapshot for the Stats screen.
+// - Every number is for all decks together.
 // ---------------------------------------------------------------------------
 data class StatsUiState(
-    // Overview
-    val totalDecks: Int = 0,                    // Total active decks
-    val totalCards: Int = 0,                    // Total flashcards across all decks
-    val masteredCards: Int = 0,                 // Total cards mastered (repetition > 0)
-    val overallMasteryPercentage: Int = 0,      // Overall mastery % (0 to 100%)
+    // Collection
+    val deckCount: Int = 0,                // All decks
+    val noteDeckCount: Int = 0,            // How many of them are Note decks
+    val qaDeckCount: Int = 0,              // How many of them are Q&A decks
+    val totalCards: Int = 0,               // All cards
 
-    // Card maturity (each card is in exactly one bucket)
-    val newCards: Int = 0,                      // Never reviewed
-    val learningCards: Int = 0,                 // Reviewed, interval < 21 days
-    val matureCards: Int = 0,                   // Interval >= 21 days (long-term memory)
+    // Learning
+    val learnedCards: Int = 0,             // Cards learned so far (Got it at least once)
+    val learnedToday: Int = 0,             // Cards learned for the first time today
 
-    // Recent activity (counts individual ratings from the review log)
-    val reviewsToday: Int = 0,                  // Ratings given today
-    val reviewsThisWeek: Int = 0,               // Ratings given in the last 7 days
+    // Practice
+    val gotItTotal: Int = 0,               // All "Got it" presses added together
+    val skipTotal: Int = 0,                // All "Skip" presses added together
 
-    // Needs attention
-    val strugglingCards: List<StrugglingCard> = emptyList(), // Hardest cards, lowest ease first
+    val isLoading: Boolean = false
+) {
+    // Cards not learned yet
+    val stillToLearn: Int
+        get() = totalCards - learnedCards
 
-    val isLoading: Boolean = false              // True while calculating stats
-)
+    // Learned share as 0f..1f for LinearProgressIndicator
+    val learnedFraction: Float
+        get() = if (totalCards > 0) learnedCards.toFloat() / totalCards else 0f
+
+    // Learned share as a whole percentage for labels
+    val learnedPercentage: Int
+        get() = (learnedFraction * 100).toInt()
+}

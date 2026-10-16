@@ -12,6 +12,7 @@ data class Deck(
     val id: String = UUID.randomUUID().toString(), // Unique UUID string identifier
     val name: String,                              // Deck title (required)
     val description: String = "",                  // Deck description (optional)
+    val type: DeckType = DeckType.QUESTION_ANSWER, // NOTE or QUESTION_ANSWER (chosen once, can't change)
     val createdAt: Instant = Instant.now(),        // Creation timestamp (UTC)
     val updatedAt: Instant = Instant.now()         // Last update timestamp (UTC)
 )

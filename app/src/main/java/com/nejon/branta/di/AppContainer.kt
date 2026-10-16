@@ -4,8 +4,6 @@ import com.nejon.branta.data.repository.CardRepository
 import com.nejon.branta.data.repository.DeckRepository
 import com.nejon.branta.data.repository.InMemoryCardRepository
 import com.nejon.branta.data.repository.InMemoryDeckRepository
-import com.nejon.branta.data.repository.InMemoryReviewLogRepository
-import com.nejon.branta.data.repository.ReviewLogRepository
 
 // ---------------------------------------------------------------------------
 // APP CONTAINER (Manual Dependency Injection)
@@ -17,5 +15,4 @@ import com.nejon.branta.data.repository.ReviewLogRepository
 object AppContainer {
     val deckRepository: DeckRepository by lazy { InMemoryDeckRepository() }
     val cardRepository: CardRepository by lazy { InMemoryCardRepository() }
-    val reviewLogRepository: ReviewLogRepository by lazy { InMemoryReviewLogRepository() }
 }

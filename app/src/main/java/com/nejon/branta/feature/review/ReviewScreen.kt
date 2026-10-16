@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -37,13 +36,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.nejon.branta.data.model.Card
-import com.nejon.branta.data.model.CardRating
 import com.nejon.branta.data.model.Deck
+import com.nejon.branta.data.model.DeckType
+
+// How far (in pixels) a card must be dragged to count as a swipe
+private const val SWIPE_THRESHOLD = 250f
 
 // ---------------------------------------------------------------------------
 // 1. ROUTE (Stateful Entry Point)
@@ -61,30 +64,32 @@ fun ReviewScreenRoute(
 
     ReviewScreen(
         uiState = uiState,
-        onRevealAnswer = { viewModel.revealAnswer() },
-        onAnswerCard = { rating -> viewModel.answerCard(rating) },
-        onRestartSession = { viewModel.restartSession() },
+        onShowAnswer = { viewModel.showAnswer() },
+        onGotIt = { viewModel.gotIt() },
+        onSkip = { viewModel.skip() },
+        onRestart = { viewModel.restartSession() },
         onBackClick = onBackClick
     )
 }
 
 // ---------------------------------------------------------------------------
 // 2. MAIN SCREEN UI (Stateless)
-//    - Clear 2-Phase Review Flow: Question Phase -> Answer Phase.
+//    - One card at a time: "Got it" or "Skip" (buttons or swipe).
 // ---------------------------------------------------------------------------
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReviewScreen(
     uiState: ReviewUiState,
-    onRevealAnswer: () -> Unit = {},
-    onAnswerCard: (CardRating) -> Unit = {},
-    onRestartSession: () -> Unit = {},
+    onShowAnswer: () -> Unit = {},
+    onGotIt: () -> Unit = {},
+    onSkip: () -> Unit = {},
+    onRestart: () -> Unit = {},
     onBackClick: () -> Unit = {}
 ) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(text = uiState.deck?.name?.let { "Review: $it" } ?: "Review") },
+                title = { Text(text = uiState.deck?.name ?: "Study") },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
                         Icon(
@@ -101,6 +106,10 @@ fun ReviewScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
+            val currentCard = uiState.currentCard
+            // Every card follows the deck's type (Q&A cards can be flipped, Notes can't)
+            val deckType = uiState.deck?.type ?: DeckType.QUESTION_ANSWER
+
             when {
                 // State 1: Show loading spinner
                 uiState.isLoading -> {
@@ -109,94 +118,87 @@ fun ReviewScreen(
                     )
                 }
 
-                // State 2: No cards available to review in this deck
-                uiState.totalCardsInSession == 0 -> {
+                // State 2: Deck has no cards
+                uiState.cards.isEmpty() -> {
                     Text(
-                        text = "No cards available to review in this deck!",
+                        text = "No cards in this deck yet!",
                         style = MaterialTheme.typography.bodyLarge,
                         modifier = Modifier.align(Alignment.Center)
                     )
                 }
 
-                // State 3: Session Completed! Show celebratory summary screen
-                uiState.isSessionCompleted -> {
-                    SessionCompletedContent(
-                        reviewedCount = uiState.reviewedCount,
-                        onRestart = onRestartSession,
+                // State 3: Every card has been shown
+                uiState.isFinished -> {
+                    SessionFinishedContent(
+                        gotIt = uiState.gotItInSession,
+                        total = uiState.cards.size,
+                        onRestart = onRestart,
                         onBack = onBackClick,
                         modifier = Modifier.align(Alignment.Center)
                     )
                 }
 
-                // State 4: Active Reviewing - Question / Answer Phase
-                uiState.currentCard != null -> {
+                // State 4: Studying a card
+                currentCard != null -> {
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(16.dp),
-                        verticalArrangement = Arrangement.SpaceBetween,
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        // Progress Counter (e.g. "Remaining: 3 cards")
+                        // Progress: "Card 3 of 10"
                         Text(
-                            text = "Remaining: ${uiState.activeCards.size} cards (Reviewed ${uiState.reviewedCount})",
+                            text = "Card ${uiState.currentIndex + 1} of ${uiState.cards.size}",
                             style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
 
                         Spacer(modifier = Modifier.height(16.dp))
 
-                        // Flashcard UI Component (Swiping enabled once answer is revealed)
-                        FlashcardReviewItem(
-                            card = uiState.currentCard!!,
-                            isRevealed = uiState.isBackRevealed,
-                            onReveal = onRevealAnswer,
-                            onSwipeRight = { onAnswerCard(CardRating.GOOD) },
-                            onSwipeLeft = { onAnswerCard(CardRating.AGAIN) },
+                        StudyCard(
+                            card = currentCard,
+                            deckType = deckType,
+                            isAnswerShown = uiState.isAnswerShown,
+                            onShowAnswer = onShowAnswer,
+                            onSwipeRight = onGotIt,
+                            onSwipeLeft = onSkip,
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxWidth()
                         )
 
-                        Spacer(modifier = Modifier.height(16.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
 
-                        // Phase 1: Answer NOT revealed yet -> Show "Show Answer" button
-                        if (!uiState.isBackRevealed) {
-                            Button(
-                                onClick = onRevealAnswer,
+                        // Swipe hint: swiping does the same as the buttons below
+                        Text(
+                            text = "👈 Swipe left to skip  ·  Swipe right for “Got it” 👉",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center
+                        )
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // Buttons do the same as swiping
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = onSkip,
                                 modifier = Modifier
-                                    .fillMaxWidth()
+                                    .weight(1f)
                                     .height(56.dp)
                             ) {
-                                Text("Tap to Show Answer", style = MaterialTheme.typography.titleMedium)
+                                Text("⏭ Skip", style = MaterialTheme.typography.titleMedium)
                             }
-                        } else {
-                            // Phase 2: Answer IS revealed -> Clear kid-friendly choice buttons!
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            Button(
+                                onClick = onGotIt,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(56.dp)
                             ) {
-                                // ❌ Left Button: Try Again
-                                Button(
-                                    onClick = { onAnswerCard(CardRating.AGAIN) },
-                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .height(56.dp)
-                                ) {
-                                    Text("❌ Try Again", style = MaterialTheme.typography.titleMedium)
-                                }
-
-                                // ✅ Right Button: Got It!
-                                Button(
-                                    onClick = { onAnswerCard(CardRating.GOOD) },
-                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .height(56.dp)
-                                ) {
-                                    Text("✅ Got It!", style = MaterialTheme.typography.titleMedium)
-                                }
+                                Text("✅ Got it", style = MaterialTheme.typography.titleMedium)
                             }
                         }
                     }
@@ -208,150 +210,125 @@ fun ReviewScreen(
 
 // ---------------------------------------------------------------------------
 // 3. HELPER COMPONENTS
-//    - Flashcard Review Card & Celebratory Session Completed Summary.
 // ---------------------------------------------------------------------------
 
-// Flashcard Component - Swiping left/right activates once answer is revealed
+// The card on screen: drag left/right to swipe; in a Q&A deck, tap to see the answer
 @Composable
-private fun FlashcardReviewItem(
+private fun StudyCard(
     card: Card,
-    isRevealed: Boolean,
-    onReveal: () -> Unit,
+    deckType: DeckType,
+    isAnswerShown: Boolean,
+    onShowAnswer: () -> Unit,
     onSwipeRight: () -> Unit,
     onSwipeLeft: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    // Tracks horizontal drag distance in pixels
-    var offsetX by remember { mutableFloatStateOf(0f) }
+    // How far the card is dragged sideways (in pixels); starts at 0 for every new card
+    var offsetX by remember(card.id) { mutableFloatStateOf(0f) }
 
     Card(
         modifier = modifier
             .graphicsLayer {
-                // Move card horizontally with drag and tilt angle proportionately
+                // Move the card with your finger and tilt it a little
                 translationX = offsetX
-                rotationZ = offsetX / 25f // Tinder tilt effect
+                rotationZ = offsetX / 25f
             }
-            .pointerInput(isRevealed) {
-                // Swiping is active only when answer is revealed
-                if (isRevealed) {
-                    detectHorizontalDragGestures(
-                        onDragEnd = {
-                            when {
-                                // Swiped Right (>250px) -> Got It!
-                                offsetX > 250f -> {
-                                    onSwipeRight()
-                                    offsetX = 0f
-                                }
-                                // Swiped Left (<-250px) -> Try Again
-                                offsetX < -250f -> {
-                                    onSwipeLeft()
-                                    offsetX = 0f
-                                }
-                                else -> offsetX = 0f
-                            }
-                        },
-                        onDragCancel = { offsetX = 0f },
-                        onHorizontalDrag = { _, dragAmount ->
-                            offsetX += dragAmount
+            .pointerInput(card.id) {
+                detectHorizontalDragGestures(
+                    onHorizontalDrag = { _, dragAmount -> offsetX += dragAmount },
+                    onDragEnd = {
+                        when {
+                            offsetX > SWIPE_THRESHOLD -> onSwipeRight()  // far enough right: Got it
+                            offsetX < -SWIPE_THRESHOLD -> onSwipeLeft()  // far enough left: Skip
+                            else -> offsetX = 0f                         // not far enough: snap back
                         }
-                    )
-                }
+                    },
+                    onDragCancel = { offsetX = 0f }
+                )
             }
-            .clickable(onClick = if (!isRevealed) onReveal else { {} }), // Tap card to reveal answer
+            // Only a Q&A card whose answer is still hidden reacts to a tap
+            .clickable(
+                enabled = deckType == DeckType.QUESTION_ANSWER && !isAnswerShown,
+                onClick = onShowAnswer
+            ),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(24.dp),
-            verticalArrangement = Arrangement.SpaceBetween,
+            verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Front Prompt Section
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.Center,
-                horizontalAlignment = Alignment.CenterHorizontally
+            // Type badge: "📝 Note" or "❓ Q&A"
+            Surface(
+                shape = MaterialTheme.shapes.small,
+                color = MaterialTheme.colorScheme.primaryContainer
             ) {
-                Surface(
-                    shape = MaterialTheme.shapes.small,
-                    color = MaterialTheme.colorScheme.primaryContainer
-                ) {
-                    Text(
-                        text = "QUESTION",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                    )
-                }
-                Spacer(modifier = Modifier.height(16.dp))
                 Text(
-                    text = card.front,
-                    style = MaterialTheme.typography.headlineMedium
+                    text = deckType.label,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                 )
             }
 
-            // Phase 1 vs Phase 2 UI
-            if (!isRevealed) {
-                // Phase 1 Hint
-                Text(
-                    text = "💡 Tap anywhere on card to show answer",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
-            } else {
-                // Phase 2: Back Answer Section
-                HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.Center,
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // The note, or the question
+            Text(
+                text = card.text,
+                style = MaterialTheme.typography.headlineMedium,
+                textAlign = TextAlign.Center
+            )
+
+            // Q&A cards: hint first, answer after a tap
+            if (deckType == DeckType.QUESTION_ANSWER) {
+                Spacer(modifier = Modifier.height(24.dp))
+                if (isAnswerShown) {
+                    HorizontalDivider()
+                    Spacer(modifier = Modifier.height(24.dp))
+                    Text(
+                        text = card.answer.orEmpty(),
+                        style = MaterialTheme.typography.titleLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                        textAlign = TextAlign.Center
+                    )
+                } else {
+                    // Hint: tapping the card shows the answer
                     Surface(
-                        shape = MaterialTheme.shapes.small,
+                        shape = MaterialTheme.shapes.medium,
                         color = MaterialTheme.colorScheme.secondaryContainer
                     ) {
                         Text(
-                            text = "ANSWER",
-                            style = MaterialTheme.typography.labelMedium,
+                            text = "👆 Tap the card to see the answer",
+                            style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.onSecondaryContainer,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                         )
                     }
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(
-                        text = card.back ?: "(Read & Repeat)",
-                        style = MaterialTheme.typography.titleLarge
-                    )
-                }
-
-                // Phase 2 Swipe Instruction Badge
-                Surface(
-                    shape = MaterialTheme.shapes.medium,
-                    color = MaterialTheme.colorScheme.surfaceVariant,
-                    modifier = Modifier.padding(bottom = 4.dp)
-                ) {
-                    Text(
-                        text = "👈 Swipe Left = Try Again  |  👉 Swipe Right = Got It!",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                    )
                 }
             }
         }
     }
 }
 
-// Celebratory Session Completed Summary Screen
+// End of session: "You got 7 of 10 cards!"
 @Composable
-private fun SessionCompletedContent(
-    reviewedCount: Int,
+private fun SessionFinishedContent(
+    gotIt: Int,
+    total: Int,
     onRestart: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // Pick a title and message that fit how the session went
+    val (title, message) = when (gotIt) {
+        total -> "🌟 Perfect!" to "You got every card!"
+        0 -> "🌱 Keep going!" to "You skipped every card this time. Try them again, you've got this!"
+        else -> "🎉 Well done!" to "You got $gotIt of $total cards!"
+    }
+
     Card(
         modifier = modifier.padding(24.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
@@ -362,36 +339,36 @@ private fun SessionCompletedContent(
             verticalArrangement = Arrangement.Center
         ) {
             Text(
-                text = "🎉 Awesome Job!",
+                text = title,
                 style = MaterialTheme.typography.headlineMedium
             )
             Spacer(modifier = Modifier.height(12.dp))
             Text(
-                text = "You reviewed $reviewedCount cards in this study session!",
+                text = message,
                 style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
             )
             Spacer(modifier = Modifier.height(24.dp))
             Button(
                 onClick = onRestart,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("Practice Again ⭐")
+                Text("Study again")
             }
             Spacer(modifier = Modifier.height(8.dp))
             OutlinedButton(
                 onClick = onBack,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("Back to Decks")
+                Text("Back to decks")
             }
         }
     }
 }
 
 // ---------------------------------------------------------------------------
-// 5. PREVIEW
-//    - Visual preview of active review card in Android Studio.
+// 4. PREVIEW
 // ---------------------------------------------------------------------------
 @Preview(showBackground = true)
 @Composable
@@ -400,12 +377,12 @@ private fun ReviewScreenPreview() {
         ReviewScreen(
             uiState = ReviewUiState(
                 deck = Deck(id = "1", name = "Kotlin Basics"),
-                activeCards = listOf(
-                    Card(id = "101", deckId = "1", front = "What is 'val'?", back = "Immutable variable")
+                cards = listOf(
+                    Card(id = "101", deckId = "1", text = "What is 'val'?", answer = "A read-only variable"),
+                    Card(id = "102", deckId = "1", text = "What is 'var'?", answer = "A variable you can change")
                 ),
-                totalCardsInSession = 1,
-                reviewedCount = 0,
-                isBackRevealed = true
+                currentIndex = 0,
+                isAnswerShown = false   // shows the "Tap the card" hint in the preview
             )
         )
     }

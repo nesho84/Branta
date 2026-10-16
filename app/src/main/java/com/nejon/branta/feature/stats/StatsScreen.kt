@@ -1,22 +1,16 @@
 package com.nejon.branta.feature.stats
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -31,13 +25,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.nejon.branta.data.model.DeckType
 
 // ---------------------------------------------------------------------------
 // 1. ROUTE (Stateful Entry Point)
@@ -55,7 +47,7 @@ fun StatsScreenRoute(
 
 // ---------------------------------------------------------------------------
 // 2. MAIN SCREEN UI (Stateless)
-//    - Overview + Card Maturity + Recent Activity + Needs Attention.
+//    - Learned, Today/Still to learn, Collection, and Practice cards.
 // ---------------------------------------------------------------------------
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -65,7 +57,7 @@ fun StatsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Learning Progress") }
+                title = { Text("My Progress") }
             )
         }
     ) { innerPadding ->
@@ -82,45 +74,45 @@ fun StatsScreen(
                     )
                 }
 
-                // State 2: Active Dashboard
+                // State 2: No decks yet
+                uiState.deckCount == 0 -> {
+                    Text(
+                        text = "Create a deck to see your progress!",
+                        style = MaterialTheme.typography.bodyLarge,
+                        modifier = Modifier.align(Alignment.Center)
+                    )
+                }
+
+                // State 3: Progress dashboard (scrolls on small screens)
                 else -> {
-                    LazyColumn(
-                        contentPadding = PaddingValues(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp),
-                        modifier = Modifier.fillMaxSize()
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState())
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        // Section A: Overall Mastery Summary Card
-                        item { OverallMasteryCard(uiState = uiState) }
+                        LearnedCard(uiState = uiState)
 
-                        // Section B: Card Maturity Breakdown (New / Learning / Mature)
-                        item { MaturityCard(uiState = uiState) }
-
-                        // Section C: Recent Review Activity
-                        item { ActivityCard(uiState = uiState) }
-
-                        // Section D: Needs Attention title
-                        item {
-                            Text(
-                                text = "Needs Attention",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = MaterialTheme.colorScheme.primary
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            StatTile(
+                                label = "Learned today",
+                                value = uiState.learnedToday,
+                                modifier = Modifier.weight(1f)
+                            )
+                            StatTile(
+                                label = "Still to learn",
+                                value = uiState.stillToLearn,
+                                modifier = Modifier.weight(1f)
                             )
                         }
 
-                        // Section E: Struggling cards, or a friendly empty message
-                        if (uiState.strugglingCards.isEmpty()) {
-                            item {
-                                Text(
-                                    text = "No struggling cards. Nice work! 🎉",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        } else {
-                            items(items = uiState.strugglingCards, key = { it.cardId }) { card ->
-                                StrugglingCardItem(card = card)
-                            }
-                        }
+                        CollectionCard(uiState = uiState)
+
+                        PracticeCard(uiState = uiState)
                     }
                 }
             }
@@ -132,9 +124,9 @@ fun StatsScreen(
 // 3. HELPER COMPONENTS
 // ---------------------------------------------------------------------------
 
-// Overall Mastery Summary Card
+// Big card: "12 of 28 cards" + percentage + progress bar
 @Composable
-private fun OverallMasteryCard(
+private fun LearnedCard(
     uiState: StatsUiState,
     modifier: Modifier = Modifier
 ) {
@@ -149,168 +141,46 @@ private fun OverallMasteryCard(
                 .fillMaxWidth()
         ) {
             Text(
-                text = "📊 Overall Mastery Rate",
+                text = "📚 Learned",
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.onPrimaryContainer
             )
             Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = "${uiState.overallMasteryPercentage}%",
-                style = MaterialTheme.typography.headlineLarge,
-                color = MaterialTheme.colorScheme.onPrimaryContainer
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Bottom
+            ) {
+                Text(
+                    text = "${uiState.learnedCards} of ${plural(uiState.totalCards, "card", "cards")}",
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+                Text(
+                    text = "${uiState.learnedPercentage}%",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Overall Progress Bar (0.0f to 1.0f)
             LinearProgressIndicator(
-                progress = { uiState.overallMasteryPercentage / 100f },
+                progress = { uiState.learnedFraction },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(8.dp),
                 color = MaterialTheme.colorScheme.primary
             )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Metric Summary Chips Row
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                MetricPill(label = "Decks", value = "${uiState.totalDecks}")
-                MetricPill(label = "Total Cards", value = "${uiState.totalCards}")
-                MetricPill(label = "Mastered", value = "⭐ ${uiState.masteredCards}")
-            }
         }
     }
 }
 
-// One colored slice of the maturity bar
-private data class MaturitySegment(
-    val label: String,
-    val count: Int,
-    val color: Color
-)
-
-// Card Maturity: segmented bar + legend
+// Small tile: a big number with a label underneath
 @Composable
-private fun MaturityCard(
-    uiState: StatsUiState,
-    modifier: Modifier = Modifier
-) {
-    val segments = listOf(
-        MaturitySegment("New", uiState.newCards, MaterialTheme.colorScheme.outlineVariant),
-        MaturitySegment("Learning", uiState.learningCards, MaterialTheme.colorScheme.tertiary),
-        MaturitySegment("Mature", uiState.matureCards, MaterialTheme.colorScheme.primary)
-    )
-
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .padding(16.dp)
-                .fillMaxWidth()
-        ) {
-            Text(
-                text = "🌱 Card Maturity",
-                style = MaterialTheme.typography.titleSmall
-            )
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // Segmented bar: each slice's width is proportional to its card count
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(12.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
-            ) {
-                // weight() must be > 0, so empty buckets are skipped
-                segments.filter { it.count > 0 }.forEach { segment ->
-                    Box(
-                        modifier = Modifier
-                            .weight(segment.count.toFloat())
-                            .fillMaxHeight()
-                            .background(segment.color)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // Legend
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                segments.forEach { segment -> LegendItem(segment = segment) }
-            }
-        }
-    }
-}
-
-// Legend entry: colored dot + label + count
-@Composable
-private fun LegendItem(segment: MaturitySegment) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .size(10.dp)
-                .clip(CircleShape)
-                .background(segment.color)
-        )
-        Text(
-            text = "${segment.label} ${segment.count}",
-            style = MaterialTheme.typography.labelMedium
-        )
-    }
-}
-
-// Recent Activity: two side-by-side tiles
-@Composable
-private fun ActivityCard(
-    uiState: StatsUiState,
-    modifier: Modifier = Modifier
-) {
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .padding(16.dp)
-                .fillMaxWidth()
-        ) {
-            Text(
-                text = "🔥 Recent Activity",
-                style = MaterialTheme.typography.titleSmall
-            )
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                ActivityTile(label = "Reviews today", count = uiState.reviewsToday, modifier = Modifier.weight(1f))
-                ActivityTile(label = "Last 7 days", count = uiState.reviewsThisWeek, modifier = Modifier.weight(1f))
-            }
-        }
-    }
-}
-
-// Single activity number tile
-@Composable
-private fun ActivityTile(
+private fun StatTile(
     label: String,
-    count: Int,
+    value: Int,
     modifier: Modifier = Modifier
 ) {
     Surface(
@@ -318,96 +188,95 @@ private fun ActivityTile(
         shape = MaterialTheme.shapes.medium,
         color = MaterialTheme.colorScheme.secondaryContainer
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
+        Column(modifier = Modifier.padding(16.dp)) {
             Text(
-                text = "$count",
+                text = "$value",
                 style = MaterialTheme.typography.headlineMedium,
                 color = MaterialTheme.colorScheme.onSecondaryContainer
             )
             Text(
                 text = label,
-                style = MaterialTheme.typography.labelMedium,
+                style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSecondaryContainer
             )
         }
     }
 }
 
-// Struggling card row: front text + deck name + ease badge
+// Collection: how many decks and cards, and how many decks of each type
 @Composable
-private fun StrugglingCardItem(
-    card: StrugglingCard,
+private fun CollectionCard(
+    uiState: StatsUiState,
     modifier: Modifier = Modifier
 ) {
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-    ) {
-        Row(
-            modifier = Modifier
-                .padding(16.dp)
-                .fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = card.front,
-                    style = MaterialTheme.typography.bodyLarge,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = card.deckName,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            Spacer(modifier = Modifier.width(12.dp))
-
-            // Ease badge: lower = harder for you
-            Surface(
-                shape = MaterialTheme.shapes.small,
-                color = MaterialTheme.colorScheme.errorContainer
-            ) {
-                Text(
-                    text = "Ease %.1f".format(card.easeFactor),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onErrorContainer,
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                )
-            }
-        }
+    StatsSectionCard(title = "🗂 Collection", modifier = modifier) {
+        Text(
+            text = "${plural(uiState.deckCount, "deck", "decks")}  ·  ${plural(uiState.totalCards, "card", "cards")}",
+            style = MaterialTheme.typography.titleMedium
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = "${DeckType.NOTE.label}: ${plural(uiState.noteDeckCount, "deck", "decks")}  ·  " +
+                "${DeckType.QUESTION_ANSWER.label}: ${plural(uiState.qaDeckCount, "deck", "decks")}",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 
-// Small Metric Chip Helper
+// Practice: all "Got it" and "Skip" presses added together
 @Composable
-private fun MetricPill(
-    label: String,
-    value: String
+private fun PracticeCard(
+    uiState: StatsUiState,
+    modifier: Modifier = Modifier
 ) {
-    Surface(
-        shape = MaterialTheme.shapes.small,
-        color = MaterialTheme.colorScheme.surface
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+    StatsSectionCard(title = "🎯 Practice", modifier = modifier) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(24.dp)
         ) {
             Text(
-                text = value,
+                text = "✅ ${uiState.gotItTotal} Got it",
                 style = MaterialTheme.typography.titleMedium
             )
             Text(
-                text = label,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                text = "⏭ ${uiState.skipTotal} Skipped",
+                style = MaterialTheme.typography.titleMedium
             )
         }
     }
 }
+
+// Shared look for the Collection and Practice cards: a title and some content
+@Composable
+private fun StatsSectionCard(
+    title: String,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .padding(16.dp)
+                .fillMaxWidth()
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.primary
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            content()
+        }
+    }
+}
+
+// "1 deck" / "3 decks"
+private fun plural(count: Int, one: String, many: String): String =
+    if (count == 1) "$count $one" else "$count $many"
 
 // ---------------------------------------------------------------------------
 // 4. PREVIEW
@@ -418,19 +287,14 @@ private fun StatsScreenPreview() {
     MaterialTheme {
         StatsScreen(
             uiState = StatsUiState(
-                totalDecks = 6,
-                totalCards = 28,
-                masteredCards = 12,
-                overallMasteryPercentage = 42,
-                newCards = 14,
-                learningCards = 10,
-                matureCards = 4,
-                reviewsToday = 7,
-                reviewsThisWeek = 19,
-                strugglingCards = listOf(
-                    StrugglingCard("1", "What is Smart Casting in Kotlin?", "Kotlin Fundamentals", 1.7f),
-                    StrugglingCard("2", "Explain remember vs rememberSaveable", "Jetpack Compose UI", 2.1f)
-                )
+                deckCount = 7,
+                noteDeckCount = 1,
+                qaDeckCount = 6,
+                totalCards = 30,
+                learnedCards = 12,
+                learnedToday = 3,
+                gotItTotal = 34,
+                skipTotal = 12
             )
         )
     }
